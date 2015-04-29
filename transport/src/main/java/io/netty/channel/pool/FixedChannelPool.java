@@ -39,7 +39,6 @@ public final class FixedChannelPool extends SimpleChannelPool {
             new IllegalStateException("Too many outstanding acquire operations");
     private static final TimeoutException TIMEOUT_EXCEPTION =
             new TimeoutException("Acquire operation took longer then configured maximum time");
-    private static final long START_TIME = System.nanoTime();
 
     static {
         FULL_EXCEPTION.setStackTrace(EmptyArrays.EMPTY_STACK_TRACE);
@@ -173,11 +172,6 @@ public final class FixedChannelPool extends SimpleChannelPool {
         this.maxPendingAcquires = maxPendingAcquires;
     }
 
-    // We substract here to guard against overflow.
-    private static long timeSinceClassInit() {
-        return System.nanoTime() - START_TIME;
-    }
-
     @Override
     public Future<Channel> acquire(final Promise<Channel> promise) {
         try {
@@ -295,7 +289,7 @@ public final class FixedChannelPool extends SimpleChannelPool {
     // AcquireTask extends AcquireListener to reduce object creations and so GC pressure
     private final class AcquireTask extends AcquireListener {
         final Promise<Channel> promise;
-        final long creationTime = timeSinceClassInit();
+        final long expireNanoTime = System.nanoTime() + acquireTimeoutNanos;
         ScheduledFuture<?> timeoutFuture;
 
         public AcquireTask(Promise<Channel> promise) {
@@ -310,11 +304,14 @@ public final class FixedChannelPool extends SimpleChannelPool {
         @Override
         public final void run() {
             assert executor.inEventLoop();
-
-            long expiredThresholdTime = timeSinceClassInit() - acquireTimeoutNanos;
+            long nanoTime = System.nanoTime();
             for (;;) {
                 AcquireTask task = pendingAcquireQueue.peek();
-                if (task == null || task.creationTime >= expiredThresholdTime) {
+                // Compare nanoTime as descripted in the javadocs of System.nanoTime()
+                //
+                // See https://docs.oracle.com/javase/7/docs/api/java/lang/System.html#nanoTime()
+                // See https://github.com/netty/netty/issues/3705
+                if (task == null || nanoTime - task.expireNanoTime < 0) {
                     break;
                 }
                 pendingAcquireQueue.remove();
