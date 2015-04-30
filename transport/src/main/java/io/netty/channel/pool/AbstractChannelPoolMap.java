@@ -26,7 +26,7 @@ import static io.netty.util.internal.ObjectUtil.checkNotNull;
 
 /**
  * A skeletal {@link ChannelPoolMap} implementation. To find the right {@link ChannelPool}
- * the {@link Object#hashCode()} and {@link Object#hashCode()} is used.
+ * the {@link Object#hashCode()} and {@link Object#equals(Object)} is used.
  */
 public abstract class AbstractChannelPoolMap<K, P extends ChannelPool>
         implements ChannelPoolMap<K, P>, Iterable<Entry<K, P>> {
